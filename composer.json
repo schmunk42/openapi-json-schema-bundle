@@ -1,0 +1,42 @@
+{
+    "name": "schmunk42/openapi-json-schema-bundle",
+    "description": "Symfony bundle for integrating JSON Schema validation with API Platform OpenAPI documentation via dynamic schema aggregation",
+    "type": "symfony-bundle",
+    "license": "MIT",
+    "keywords": [
+        "symfony",
+        "api-platform",
+        "openapi",
+        "json-schema",
+        "swagger",
+        "validation",
+        "anyOf",
+        "schema-registry"
+    ],
+    "authors": [
+        {
+            "name": "Tobias Munk",
+            "email": "schmunk@usrbin.de"
+        }
+    ],
+    "require": {
+        "php": ">=8.2",
+        "symfony/framework-bundle": "^7.0",
+        "symfony/dependency-injection": "^7.0",
+        "symfony/config": "^7.0",
+        "api-platform/json-schema": "^4.2",
+        "api-platform/metadata": "^4.2",
+        "psr/log": "^3.0",
+        "psr/cache": "^3.0"
+    },
+    "suggest": {
+        "opis/json-schema": "For file-based JSON schema validation"
+    },
+    "autoload": {
+        "psr-4": {
+            "Schmunk42\\OpenApiJsonSchema\\": "src/"
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

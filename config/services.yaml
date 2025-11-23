@@ -1,0 +1,33 @@
+# file generated with AI assistance: Claude Code - 2025-11-22 00:35:00
+
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        public: false
+
+    # Schema Registry Service
+    Schmunk42\OpenApiJsonSchema\Service\SchemaRegistry:
+        arguments:
+            $cache: '@cache.app'
+            $logger: '@logger'
+            $cacheTtl: '%schmunk42_open_api_json_schema.cache_ttl%'
+        tags: ['monolog.logger']
+        calls:
+            # Register all tagged schema providers
+            - registerProviders: [!tagged_iterator schmunk42_open_api_json_schema.provider]
+
+    # OpenAPI Decorator for JSON Fields
+    Schmunk42\OpenApiJsonSchema\OpenApi\JsonFieldSchemaDecorator:
+        decorates: 'api_platform.json_schema.schema_factory'
+        arguments:
+            $decorated: '@.inner'
+            $schemaRegistry: '@Schmunk42\OpenApiJsonSchema\Service\SchemaRegistry'
+            $logger: '@logger'
+            $schemaBasePath: '%schmunk42_open_api_json_schema.schema_base_path%'
+        tags: ['monolog.logger']
+
+    # Auto-register schema providers
+    _instanceof:
+        Schmunk42\OpenApiJsonSchema\Interface\SchemaProviderInterface:
+            tags: ['schmunk42_open_api_json_schema.provider']
