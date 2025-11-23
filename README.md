@@ -56,11 +56,11 @@ schmunk42_open_api_json_schema:
     cache_ttl: 3600  # Cache TTL in seconds (default: 1 hour)
 ```
 
-## Usage
+## Basic Usage
 
-### Basic Usage with Attributes
+### Simple Example: Tags Array
 
-Use the `#[JsonSchema]` attribute to mark JSON fields that should have their schema injected into OpenAPI:
+Here's a simple example of adding JSON schema validation to a tags field:
 
 ```php
 use ApiPlatform\Metadata\ApiResource;
@@ -69,153 +69,121 @@ use Schmunk42\OpenApiJsonSchema\Attribute\JsonSchema;
 
 #[ApiResource]
 #[ORM\Entity]
-class MyEntity
+class Article
 {
+    #[ORM\Id]
+    #[ORM\Column(type: 'string')]
+    private string $id;
+
+    #[ORM\Column(type: 'string')]
+    private string $title;
+
     #[ORM\Column(type: 'json')]
-    #[JsonSchema('my-schema.json')]
-    private array $config = [];
+    #[JsonSchema('article-tags.json')]
+    private array $tags = [];
 }
 ```
 
-The bundle will automatically load `my-schema.json` from your configured `schema_base_path` and inject it into the OpenAPI documentation for this field.
-
-### Dynamic Schemas with Entity Providers
-
-For more complex scenarios where the schema depends on runtime logic, implement `JsonSchemaProviderInterface`:
-
-```php
-use Schmunk42\OpenApiJsonSchema\Interface\JsonSchemaProviderInterface;
-
-#[ApiResource]
-#[ORM\Entity]
-class MyEntity implements JsonSchemaProviderInterface
-{
-    #[ORM\Column(type: 'json')]
-    #[JsonSchema]  // No path needed - uses getJsonSchema()
-    private array $config = [];
-
-    public static function getJsonSchema(string $fieldName): ?array
-    {
-        if ($fieldName === 'config') {
-            return [
-                'type' => 'object',
-                'properties' => [
-                    'api_key' => ['type' => 'string'],
-                    'timeout' => ['type' => 'integer']
-                ],
-                'required' => ['api_key']
-            ];
-        }
-        return null;
-    }
-}
-```
-
-### Creating Schema Providers
-
-Schema providers allow you to register external JSON schemas that will be combined into unified schemas.
-
-#### 1. Implement SchemaProviderInterface
-
-```php
-namespace App\Extension;
-
-use Schmunk42\OpenApiJsonSchema\Interface\SchemaProviderInterface;
-
-class MyApiExtension implements SchemaProviderInterface
-{
-    public function getName(): string
-    {
-        return 'my_api';  // Unique identifier
-    }
-
-    public function getSchemaPath(): string
-    {
-        return __DIR__ . '/../config/my-api-schema.json';
-    }
-}
-```
-
-#### 2. Register as Service
-
-In `config/services.yaml`:
-
-```yaml
-services:
-    # Auto-register schema providers
-    _instanceof:
-        Schmunk42\OpenApiJsonSchema\Interface\SchemaProviderInterface:
-            tags: ['schmunk42_open_api_json_schema.provider']
-
-    App\Extension\MyApiExtension: ~
-```
-
-The bundle will automatically discover and register this provider via service tagging.
-
-#### 3. Use Unified Schema
-
-Access the unified schema combining all providers:
-
-```php
-use Schmunk42\OpenApiJsonSchema\Service\SchemaRegistry;
-
-class MyService
-{
-    public function __construct(
-        private readonly SchemaRegistry $schemaRegistry
-    ) {}
-
-    public function getUnifiedSchema(): array
-    {
-        return $this->schemaRegistry->getUnifiedSchema();
-    }
-}
-```
-
-The unified schema will have this structure:
+Create `config/schemas/article-tags.json`:
 
 ```json
 {
     "$schema": "https://json-schema.org/draft-07/schema#",
-    "description": "Unified schema from N provider(s). Must match one of the available schemas.",
-    "anyOf": [
-        { "...": "schema from provider 1" },
-        { "...": "schema from provider 2" },
-        { "...": "schema from provider N" }
-    ]
+    "type": "array",
+    "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 50
+    },
+    "uniqueItems": true,
+    "maxItems": 10
 }
 ```
 
-## Advanced Usage
+### The Power of the Annotation
 
-### Using Unified Schema in Entity
+**Key Concept**: `#[ORM\Column(type: 'json')]` + `#[JsonSchema]` = Full JSON Schema in OpenAPI
 
-You can combine static schema providers with entity-level dynamic schemas:
+The bundle automatically injects your JSON schema into the OpenAPI documentation. This means:
+- Your database column stores validated JSON data
+- Your API documentation shows the exact schema structure
+- Clients can see what data structure is expected
+
+**IMPORTANT**: Including schemas this way still produces **fully valid JSON schemas**, which are **fully compatible with OpenAPI 3.1**.
+
+### OpenAPI Output
+
+With the example above, your OpenAPI schema will include:
+
+```json
+{
+  "Article": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50
+        },
+        "uniqueItems": true,
+        "maxItems": 10
+      }
+    }
+  }
+}
+```
+
+### Dynamic Schemas from Entity Method
+
+For schemas that require runtime logic, use the `#[JsonSchema]` attribute without a path and implement `JsonSchemaProviderInterface`:
 
 ```php
+use ApiPlatform\Metadata\ApiResource;
+use Doctrine\ORM\Mapping as ORM;
+use Schmunk42\OpenApiJsonSchema\Attribute\JsonSchema;
 use Schmunk42\OpenApiJsonSchema\Interface\JsonSchemaProviderInterface;
-use Schmunk42\OpenApiJsonSchema\OpenApi\JsonFieldSchemaDecorator;
 
 #[ApiResource]
-class ApiConfiguration implements JsonSchemaProviderInterface
+#[ORM\Entity]
+class Report implements JsonSchemaProviderInterface
 {
+    #[ORM\Id]
+    #[ORM\Column(type: 'string')]
+    private string $id;
+
     #[ORM\Column(type: 'json')]
-    #[JsonSchema]
-    private array $config = [];
+    #[JsonSchema]  // No path - uses getJsonSchema() method
+    private array $filters = [];
 
     public static function getJsonSchema(string $fieldName): ?array
     {
-        if ($fieldName === 'config') {
-            // Access the SchemaRegistry via the decorator
-            $schemaRegistry = JsonFieldSchemaDecorator::getSchemaRegistry();
-            if ($schemaRegistry === null) {
-                return null;
-            }
+        if ($fieldName === 'filters') {
+            $firstDayOfMonth = (new \DateTime('first day of this month'))->format('Y-m-d');
 
-            $unifiedSchema = $schemaRegistry->getUnifiedSchema();
             return [
-                'description' => $unifiedSchema['description'] ?? 'API Configuration',
-                'anyOf' => $unifiedSchema['anyOf']
+                'type' => 'object',
+                'properties' => [
+                    'dateFrom' => [
+                        'type' => 'string',
+                        'format' => 'date',
+                        'default' => $firstDayOfMonth,
+                        'description' => 'Start date for report (defaults to first day of current month)'
+                    ],
+                    'dateTo' => [
+                        'type' => 'string',
+                        'format' => 'date',
+                        'description' => 'End date for report'
+                    ]
+                ],
+                'required' => ['dateFrom', 'dateTo']
             ];
         }
         return null;
@@ -223,52 +191,20 @@ class ApiConfiguration implements JsonSchemaProviderInterface
 }
 ```
 
-### Schema Validation
+This approach is useful when:
+- Schema needs runtime-calculated values (like dates)
+- Schema structure depends on application state
+- You want to keep schema logic close to the entity
 
-Use `SchemaRegistry` to validate data against unified schemas:
+## Advanced Usage
 
-```php
-use Schmunk42\OpenApiJsonSchema\Service\SchemaRegistry;
-use Opis\JsonSchema\Validator;
+For complex scenarios including:
+- Creating schema providers for unified schemas
+- Schema validation
+- Cache management
+- Using unified schemas in entities
 
-class MyValidator
-{
-    public function __construct(
-        private readonly SchemaRegistry $schemaRegistry
-    ) {}
-
-    public function validate(array $data): bool
-    {
-        $validator = new Validator();
-        $schema = json_decode(json_encode($this->schemaRegistry->getUnifiedSchema()));
-        $dataObject = json_decode(json_encode($data));
-
-        $result = $validator->validate($dataObject, $schema);
-        return $result->isValid();
-    }
-}
-```
-
-### Cache Management
-
-The bundle caches unified schemas for performance. To invalidate cache:
-
-```php
-use Schmunk42\OpenApiJsonSchema\Service\SchemaRegistry;
-
-class MyService
-{
-    public function __construct(
-        private readonly SchemaRegistry $schemaRegistry
-    ) {}
-
-    public function refreshSchemas(): void
-    {
-        $this->schemaRegistry->invalidateCache();
-        // Next call to getUnifiedSchema() will rebuild from sources
-    }
-}
-```
+See [Advanced Usage Documentation](docs/advanced-usage.md)
 
 ## Architecture
 
